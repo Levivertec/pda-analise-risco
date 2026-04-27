@@ -1,0 +1,15 @@
+.claude/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+*.log
+
+# Streamlit secrets — NUNCA commitar (contém hashes de senhas)
+.streamlit/secrets.toml
+# Permitir o template ser commitado
+!.streamlit/secrets.example.toml
