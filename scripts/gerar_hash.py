@@ -55,8 +55,11 @@ def main() -> None:
     print()
     print("Adicione/atualize em secrets.toml ou Streamlit Cloud > Secrets:")
     print()
-    print("[auth]")
-    print(f'"{email}" = {{ hash = "{h}", expira = "{expira_str}" }}')
+    print("[auth_hashes]")
+    print(f'"{email}" = "{h}"')
+    print()
+    print("[auth_expira]")
+    print(f'"{email}" = "{expira_str}"')
     print()
 
 

@@ -4,16 +4,13 @@ Senhas são armazenadas como hashes PBKDF2-SHA256 (100k iterações, salt = emai
 O segredo (lista de usuários autorizados) fica em st.secrets, configurado via
 Streamlit Cloud Settings → Secrets, e nunca vai ao GitHub.
 
-Estrutura esperada em secrets.toml (formato com expiração):
+Formato recomendado (seções paralelas, mais robusto):
 
-    [auth]
-    "eng03@vertecenergia.com" = { hash = "<hash_pbkdf2>", expira = "2099-12-31" }
-    "eng04@vertecenergia.com" = { hash = "<hash_pbkdf2>", expira = "2026-12-31" }
-
-Formato legado (compatível, sem expiração — acesso eterno):
-
-    [auth]
+    [auth_hashes]
     "eng03@vertecenergia.com" = "<hash_pbkdf2>"
+
+    [auth_expira]
+    "eng03@vertecenergia.com" = "2099-12-31"
 
 Use scripts/gerar_hash.py para gerar hashes.
 Use scripts/gerenciar_acessos.py para revogar/renovar.
@@ -57,38 +54,51 @@ def _parse_data(valor) -> date:
     return DATA_INDETERMINADA
 
 
-def _extrair_credenciais(entrada) -> tuple[str, date]:
-    """Extrai (hash, data_expiracao) de uma entrada de secrets.
-
-    Aceita formato novo (dict com 'hash' e 'expira') ou legado (string).
-    """
-    if isinstance(entrada, str):
-        return entrada, DATA_INDETERMINADA
-    # Streamlit's secrets retorna AttrDict; comporta-se como dict
-    hash_v = entrada.get("hash") if hasattr(entrada, "get") else entrada["hash"]
-    expira_v = entrada.get("expira") if hasattr(entrada, "get") else None
-    expira = _parse_data(expira_v) if expira_v else DATA_INDETERMINADA
-    return hash_v, expira
+def _buscar_no_dict(d, email_norm: str):
+    """Busca case-insensitive em st.secrets dict-like. Retorna valor ou None."""
+    if d is None:
+        return None
+    try:
+        for chave in d:
+            if str(chave).strip().lower() == email_norm:
+                return d[chave]
+    except Exception:
+        return None
+    return None
 
 
 def _verificar_credenciais(email: str, senha: str) -> ResultadoAuth:
-    """Verifica email/senha/expiração contra st.secrets."""
-    if "auth" not in st.secrets:
-        return ResultadoAuth("INEXISTENTE")
-    usuarios = st.secrets["auth"]
+    """Verifica email/senha/expiração contra st.secrets.
+
+    Lê dois formatos:
+    - Novo (recomendado): seções [auth_hashes] e [auth_expira]
+    - Legado (compatível): seção [auth] com strings (sem expiração)
+    """
     email_norm = email.strip().lower()
+    hash_armazenado: str | None = None
+    expira: date = DATA_INDETERMINADA
 
-    # Busca case-insensitive
-    entrada = None
-    for chave, valor in usuarios.items():
-        if chave.strip().lower() == email_norm:
-            entrada = valor
-            break
+    # Formato novo (preferencial)
+    if "auth_hashes" in st.secrets:
+        valor = _buscar_no_dict(st.secrets["auth_hashes"], email_norm)
+        if valor is not None:
+            hash_armazenado = str(valor).strip()
+        if "auth_expira" in st.secrets:
+            data_v = _buscar_no_dict(st.secrets["auth_expira"], email_norm)
+            if data_v is not None:
+                try:
+                    expira = _parse_data(str(data_v))
+                except Exception:
+                    expira = DATA_INDETERMINADA
 
-    if entrada is None:
+    # Formato legado [auth] = string apenas
+    if hash_armazenado is None and "auth" in st.secrets:
+        valor = _buscar_no_dict(st.secrets["auth"], email_norm)
+        if valor is not None and isinstance(valor, str):
+            hash_armazenado = valor.strip()
+
+    if hash_armazenado is None:
         return ResultadoAuth("INEXISTENTE")
-
-    hash_armazenado, expira = _extrair_credenciais(entrada)
 
     hash_calculado = hash_senha(email_norm, senha)
     if not hashlib.compare_digest(hash_calculado, hash_armazenado):

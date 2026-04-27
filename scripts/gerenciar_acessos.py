@@ -44,33 +44,41 @@ def carregar() -> dict:
     if not SECRETS_PATH.exists():
         return {}
     dados = tomllib.loads(SECRETS_PATH.read_text(encoding="utf-8"))
-    auth = dados.get("auth", {})
-    # Normaliza para sempre ser {email: {hash, expira}}
+    hashes = dados.get("auth_hashes", {})
+    expiras = dados.get("auth_expira", {})
+
+    # Compatibilidade: formato legado [auth] com strings
+    if not hashes and "auth" in dados:
+        for email, valor in dados["auth"].items():
+            if isinstance(valor, str):
+                hashes[email] = valor
+
     resultado: dict[str, dict] = {}
-    for email, valor in auth.items():
-        if isinstance(valor, str):
-            resultado[email] = {"hash": valor, "expira": DATA_INDETERMINADA}
-        else:
-            resultado[email] = {
-                "hash": valor.get("hash", ""),
-                "expira": valor.get("expira", DATA_INDETERMINADA),
-            }
+    for email, hash_v in hashes.items():
+        resultado[email] = {
+            "hash": hash_v,
+            "expira": expiras.get(email, DATA_INDETERMINADA),
+        }
     return resultado
 
 
 def salvar(usuarios: dict) -> None:
-    """Reescreve .streamlit/secrets.toml com a estrutura nova."""
+    """Reescreve .streamlit/secrets.toml em formato de seções paralelas."""
     SECRETS_PATH.parent.mkdir(parents=True, exist_ok=True)
     linhas = [
         "# Credenciais de autenticação — NÃO COMMITAR",
         "# Configure os mesmos valores em Streamlit Cloud > Settings > Secrets",
         "",
-        "[auth]",
+        "[auth_hashes]",
     ]
     for email, info in sorted(usuarios.items()):
-        linhas.append(
-            f'"{email}" = {{ hash = "{info["hash"]}", expira = "{info["expira"]}" }}'
-        )
+        linhas.append(f'"{email}" = "{info["hash"]}"')
+
+    linhas.append("")
+    linhas.append("[auth_expira]")
+    for email, info in sorted(usuarios.items()):
+        linhas.append(f'"{email}" = "{info["expira"]}"')
+
     linhas.append("")
     SECRETS_PATH.write_text("\n".join(linhas), encoding="utf-8")
 
@@ -261,9 +269,13 @@ def mostrar_toml(usuarios: dict) -> None:
         return
     print("\nCole isto em Streamlit Cloud > Settings > Secrets:")
     print("-" * 65)
-    print("[auth]")
+    print("[auth_hashes]")
     for email, info in sorted(usuarios.items()):
-        print(f'"{email}" = {{ hash = "{info["hash"]}", expira = "{info["expira"]}" }}')
+        print(f'"{email}" = "{info["hash"]}"')
+    print()
+    print("[auth_expira]")
+    for email, info in sorted(usuarios.items()):
+        print(f'"{email}" = "{info["expira"]}"')
     print("-" * 65 + "\n")
 
 
