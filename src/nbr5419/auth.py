@@ -61,13 +61,29 @@ def _parse_data(valor) -> date:
     return DATA_INDETERMINADA
 
 
+def _coerce_str(valor) -> str:
+    """Coerção robusta de qualquer valor de st.secrets para string pura.
+
+    Necessária porque o Streamlit Cloud envolve valores em wrappers (AttrDict,
+    Secrets, etc.) que podem quebrar funções como hashlib.compare_digest mesmo
+    para valores que parecem strings.
+    """
+    if valor is None:
+        return ""
+    if isinstance(valor, str):
+        return valor.strip()
+    if isinstance(valor, bytes):
+        return valor.decode("utf-8", errors="ignore").strip()
+    return str(valor).strip()
+
+
 def _buscar_no_dict(d, email_norm: str):
     """Busca case-insensitive em st.secrets dict-like. Retorna valor ou None."""
     if d is None:
         return None
     try:
         for chave in d:
-            if str(chave).strip().lower() == email_norm:
+            if _coerce_str(chave).lower() == email_norm:
                 return d[chave]
     except Exception:
         return None
@@ -89,26 +105,28 @@ def _verificar_credenciais(email: str, senha: str) -> ResultadoAuth:
     if "auth_hashes" in st.secrets:
         valor = _buscar_no_dict(st.secrets["auth_hashes"], email_norm)
         if valor is not None:
-            hash_armazenado = str(valor).strip()
+            hash_armazenado = _coerce_str(valor)
         if "auth_expira" in st.secrets:
             data_v = _buscar_no_dict(st.secrets["auth_expira"], email_norm)
             if data_v is not None:
                 try:
-                    expira = _parse_data(str(data_v))
+                    expira = _parse_data(_coerce_str(data_v))
                 except Exception:
                     expira = DATA_INDETERMINADA
 
     # Formato legado [auth] = string apenas
     if hash_armazenado is None and "auth" in st.secrets:
         valor = _buscar_no_dict(st.secrets["auth"], email_norm)
-        if valor is not None and isinstance(valor, str):
-            hash_armazenado = valor.strip()
+        if valor is not None:
+            hash_armazenado = _coerce_str(valor)
 
-    if hash_armazenado is None:
+    if not hash_armazenado:
         return ResultadoAuth("INEXISTENTE")
 
     hash_calculado = hash_senha(email_norm, senha)
-    if not hashlib.compare_digest(hash_calculado, hash_armazenado):
+    # Comparação direta com strings puras — compare_digest engasga com
+    # wrappers de st.secrets do Streamlit Cloud
+    if hash_calculado != hash_armazenado:
         return ResultadoAuth("SENHA_ERRADA")
 
     if expira < date.today():
@@ -119,7 +137,7 @@ def _verificar_credenciais(email: str, senha: str) -> ResultadoAuth:
     if "auth_roles" in st.secrets:
         valor = _buscar_no_dict(st.secrets["auth_roles"], email_norm)
         if valor:
-            role = str(valor).strip().lower()
+            role = _coerce_str(valor).lower()
             if role not in ("admin", "user"):
                 role = "user"
 
@@ -136,8 +154,8 @@ def emails_admins() -> list[str]:
     admins = []
     try:
         for email in st.secrets["auth_roles"]:
-            if str(st.secrets["auth_roles"][email]).strip().lower() == "admin":
-                admins.append(str(email))
+            if _coerce_str(st.secrets["auth_roles"][email]).lower() == "admin":
+                admins.append(_coerce_str(email))
     except Exception:
         pass
     return admins
