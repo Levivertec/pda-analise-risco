@@ -13,3 +13,11 @@ venv/
 .streamlit/secrets.toml
 # Permitir o template ser commitado
 !.streamlit/secrets.example.toml
+
+# Credenciais em texto plano — NUNCA commitar
+credenciais.txt
+senhas.txt
+passwords.txt
+
+# E-mails gerados (podem conter dados pessoais)
+emails/
