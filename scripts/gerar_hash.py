@@ -51,12 +51,23 @@ def main() -> None:
         print(f"[AVISO] Data de expiração ({expira}) é anterior a hoje. "
               "O usuário será bloqueado imediatamente.")
 
+    role = input("Role [user/admin] (padrão: user): ").strip().lower() or "user"
+    if role not in ("user", "admin"):
+        print("[AVISO] Role inválido, assumindo 'user'.")
+        role = "user"
+
     h = hash_senha(email, senha)
     print()
     print("Adicione/atualize em secrets.toml ou Streamlit Cloud > Secrets:")
     print()
-    print("[auth]")
-    print(f'"{email}" = {{ hash = "{h}", expira = "{expira_str}" }}')
+    print("[auth_hashes]")
+    print(f'"{email}" = "{h}"')
+    print()
+    print("[auth_expira]")
+    print(f'"{email}" = "{expira_str}"')
+    print()
+    print("[auth_roles]")
+    print(f'"{email}" = "{role}"')
     print()
 
 

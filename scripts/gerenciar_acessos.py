@@ -1,11 +1,12 @@
 """Gerenciador de acessos do app — CLI interativo.
 
 Permite:
-- Listar usuários atuais com status (ativo/expirado/expira em breve)
-- Adicionar novo usuário (hash + expiração)
+- Listar usuários atuais com status (ativo/expirado, role admin/user)
+- Adicionar novo usuário (com role escolhível)
 - Revogar acesso (define data de expiração no passado)
 - Renovar acesso (define nova data de expiração)
 - Remover usuário completamente
+- Promover/rebaixar (admin <-> user)
 
 Lê e atualiza .streamlit/secrets.toml. Para aplicar em produção, copie
 o conteúdo atualizado para Streamlit Cloud > Settings > Secrets.
@@ -40,37 +41,52 @@ DATA_INDETERMINADA = "2099-12-31"
 
 
 def carregar() -> dict:
-    """Lê secrets.toml. Retorna {email: {hash, expira}}."""
+    """Lê secrets.toml. Retorna {email: {hash, expira, role}}."""
     if not SECRETS_PATH.exists():
         return {}
     dados = tomllib.loads(SECRETS_PATH.read_text(encoding="utf-8"))
-    auth = dados.get("auth", {})
-    # Normaliza para sempre ser {email: {hash, expira}}
+    hashes = dados.get("auth_hashes", {})
+    expiras = dados.get("auth_expira", {})
+    roles = dados.get("auth_roles", {})
+
+    # Compatibilidade: formato legado [auth] com strings
+    if not hashes and "auth" in dados:
+        for email, valor in dados["auth"].items():
+            if isinstance(valor, str):
+                hashes[email] = valor
+
     resultado: dict[str, dict] = {}
-    for email, valor in auth.items():
-        if isinstance(valor, str):
-            resultado[email] = {"hash": valor, "expira": DATA_INDETERMINADA}
-        else:
-            resultado[email] = {
-                "hash": valor.get("hash", ""),
-                "expira": valor.get("expira", DATA_INDETERMINADA),
-            }
+    for email, hash_v in hashes.items():
+        resultado[email] = {
+            "hash": hash_v,
+            "expira": expiras.get(email, DATA_INDETERMINADA),
+            "role": (roles.get(email, "user") or "user").lower(),
+        }
     return resultado
 
 
 def salvar(usuarios: dict) -> None:
-    """Reescreve .streamlit/secrets.toml com a estrutura nova."""
+    """Reescreve .streamlit/secrets.toml em formato de seções paralelas."""
     SECRETS_PATH.parent.mkdir(parents=True, exist_ok=True)
     linhas = [
         "# Credenciais de autenticação — NÃO COMMITAR",
         "# Configure os mesmos valores em Streamlit Cloud > Settings > Secrets",
         "",
-        "[auth]",
+        "[auth_hashes]",
     ]
     for email, info in sorted(usuarios.items()):
-        linhas.append(
-            f'"{email}" = {{ hash = "{info["hash"]}", expira = "{info["expira"]}" }}'
-        )
+        linhas.append(f'"{email}" = "{info["hash"]}"')
+
+    linhas.append("")
+    linhas.append("[auth_expira]")
+    for email, info in sorted(usuarios.items()):
+        linhas.append(f'"{email}" = "{info["expira"]}"')
+
+    linhas.append("")
+    linhas.append("[auth_roles]")
+    for email, info in sorted(usuarios.items()):
+        linhas.append(f'"{email}" = "{info.get("role", "user")}"')
+
     linhas.append("")
     SECRETS_PATH.write_text("\n".join(linhas), encoding="utf-8")
 
@@ -80,17 +96,17 @@ def status_usuario(info: dict) -> tuple[str, str]:
     try:
         exp = date.fromisoformat(info["expira"])
     except ValueError:
-        return "INVALIDO", "\033[91m"  # vermelho
+        return "INVALIDO", "\033[91m"
 
     hoje = date.today()
     if exp < hoje:
-        return f"EXPIRADO em {exp.strftime('%d/%m/%Y')}", "\033[91m"  # vermelho
+        return f"EXPIRADO em {exp.strftime('%d/%m/%Y')}", "\033[91m"
     if exp == date(2099, 12, 31):
-        return "ativo (indeterminado)", "\033[92m"  # verde
+        return "ativo (indeterminado)", "\033[92m"
     dias = (exp - hoje).days
     if dias <= 30:
-        return f"ativo até {exp.strftime('%d/%m/%Y')} ({dias}d restantes)", "\033[93m"  # amarelo
-    return f"ativo até {exp.strftime('%d/%m/%Y')} ({dias}d restantes)", "\033[92m"
+        return f"ativo até {exp.strftime('%d/%m/%Y')} ({dias}d)", "\033[93m"
+    return f"ativo até {exp.strftime('%d/%m/%Y')} ({dias}d)", "\033[92m"
 
 
 def listar(usuarios: dict) -> None:
@@ -98,15 +114,17 @@ def listar(usuarios: dict) -> None:
         print("\n[!] Nenhum usuário cadastrado.\n")
         return
     print()
-    print("=" * 80)
-    print(f"{'#':<3} {'E-mail':<35} Status")
-    print("-" * 80)
+    print("=" * 90)
+    print(f"{'#':<3} {'Role':<6} {'E-mail':<35} Status")
+    print("-" * 90)
     for i, (email, info) in enumerate(sorted(usuarios.items()), 1):
         status_txt, cor = status_usuario(info)
         reset = "\033[0m"
-        print(f"{i:<3} {email:<35} {cor}{status_txt}{reset}")
-    print("=" * 80)
-    print()
+        role = info.get("role", "user")
+        role_marca = "[A]" if role == "admin" else "[U]"
+        print(f"{i:<3} {role_marca:<6} {email:<35} {cor}{status_txt}{reset}")
+    print("=" * 90)
+    print("Legenda: [A] = administrador, [U] = usuário comum\n")
 
 
 def escolher_usuario(usuarios: dict, acao: str) -> str | None:
@@ -152,9 +170,18 @@ def adicionar(usuarios: dict) -> None:
         print("[ERRO] Data inválida (use YYYY-MM-DD).")
         return
 
-    usuarios[email] = {"hash": hash_senha(email, senha), "expira": expira}
+    role = input("Role [user/admin] (padrão: user): ").strip().lower() or "user"
+    if role not in ("user", "admin"):
+        print("[AVISO] Role inválido, assumindo 'user'.")
+        role = "user"
+
+    usuarios[email] = {
+        "hash": hash_senha(email, senha),
+        "expira": expira,
+        "role": role,
+    }
     salvar(usuarios)
-    print(f"[OK] {email} adicionado, expira {expira}.")
+    print(f"[OK] {email} adicionado como {role}, expira {expira}.")
     print("\n>>> Lembre-se de aplicar o mesmo em Streamlit Cloud > Secrets.\n")
 
 
@@ -171,7 +198,7 @@ def revogar(usuarios: dict) -> None:
     usuarios[email]["expira"] = ontem
     salvar(usuarios)
     print(f"[OK] Acesso de {email} revogado (expira {ontem}).")
-    print("\n>>> Aplique também em Streamlit Cloud > Secrets para revogar em produção.\n")
+    print("\n>>> Aplique também em Streamlit Cloud > Secrets.\n")
 
 
 def renovar(usuarios: dict) -> None:
@@ -207,6 +234,24 @@ def remover(usuarios: dict) -> None:
     print("\n>>> Aplique também em Streamlit Cloud > Secrets.\n")
 
 
+def promover(usuarios: dict) -> None:
+    print("\n--- Promover/rebaixar (admin <-> user) ---")
+    email = escolher_usuario(usuarios, "promover/rebaixar")
+    if not email:
+        return
+    atual = usuarios[email].get("role", "user")
+    novo = "user" if atual == "admin" else "admin"
+    print(f"Role atual: {atual} -> novo: {novo}")
+    confirma = input("Confirmar? (s/N): ").strip().lower()
+    if confirma != "s":
+        print("Cancelado.")
+        return
+    usuarios[email]["role"] = novo
+    salvar(usuarios)
+    print(f"[OK] {email} agora é '{novo}'.")
+    print("\n>>> Aplique também em Streamlit Cloud > Secrets.\n")
+
+
 def expirar_todos_validacao(usuarios: dict) -> None:
     """Atalho: define expiração para todos com data > 2099 (validação)
     para uma data específica. Útil na transição validação -> comercial."""
@@ -223,12 +268,12 @@ def expirar_todos_validacao(usuarios: dict) -> None:
         return
     afetados = [
         email for email, info in usuarios.items()
-        if info["expira"] == DATA_INDETERMINADA
+        if info["expira"] == DATA_INDETERMINADA and info.get("role", "user") != "admin"
     ]
     if not afetados:
-        print("[!] Nenhum usuário com acesso indeterminado encontrado.")
+        print("[!] Nenhum usuário 'user' com acesso indeterminado encontrado.")
         return
-    print(f"\nUsuários a serem migrados ({len(afetados)}):")
+    print(f"\nUsuários a serem migrados ({len(afetados)}, admins preservados):")
     for e in afetados:
         print(f"  - {e}")
     if input("Confirma? (s/N): ").strip().lower() != "s":
@@ -238,6 +283,7 @@ def expirar_todos_validacao(usuarios: dict) -> None:
         usuarios[email]["expira"] = nova
     salvar(usuarios)
     print(f"\n[OK] {len(afetados)} usuário(s) migrados para expirar em {nova}.")
+    print("Admins mantidos com acesso indeterminado.")
     print("\n>>> Aplique também em Streamlit Cloud > Secrets.\n")
 
 
@@ -250,8 +296,9 @@ def menu() -> None:
     print("[3] Revogar acesso (expirar ontem)")
     print("[4] Renovar acesso (estender data)")
     print("[5] Remover usuário (apagar)")
-    print("[6] Migrar todos da validação para data fixa")
-    print("[7] Mostrar bloco TOML pronto para colar no Streamlit Cloud")
+    print("[6] Promover/rebaixar (admin <-> user)")
+    print("[7] Migrar todos da validação para data fixa")
+    print("[8] Mostrar bloco TOML pronto para colar no Streamlit Cloud")
     print("[0] Sair")
 
 
@@ -261,9 +308,17 @@ def mostrar_toml(usuarios: dict) -> None:
         return
     print("\nCole isto em Streamlit Cloud > Settings > Secrets:")
     print("-" * 65)
-    print("[auth]")
+    print("[auth_hashes]")
     for email, info in sorted(usuarios.items()):
-        print(f'"{email}" = {{ hash = "{info["hash"]}", expira = "{info["expira"]}" }}')
+        print(f'"{email}" = "{info["hash"]}"')
+    print()
+    print("[auth_expira]")
+    for email, info in sorted(usuarios.items()):
+        print(f'"{email}" = "{info["expira"]}"')
+    print()
+    print("[auth_roles]")
+    for email, info in sorted(usuarios.items()):
+        print(f'"{email}" = "{info.get("role", "user")}"')
     print("-" * 65 + "\n")
 
 
@@ -283,8 +338,10 @@ def main() -> None:
         elif op == "5":
             remover(usuarios)
         elif op == "6":
-            expirar_todos_validacao(usuarios)
+            promover(usuarios)
         elif op == "7":
+            expirar_todos_validacao(usuarios)
+        elif op == "8":
             mostrar_toml(usuarios)
         elif op == "0":
             print("Até logo.")

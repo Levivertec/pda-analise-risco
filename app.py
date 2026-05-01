@@ -17,7 +17,7 @@ import streamlit as st
 # Garante que o pacote local seja encontrado
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from nbr5419.auth import exigir_login, botao_logout
+from nbr5419.auth import exigir_login, botao_logout, is_admin, hash_senha
 from nbr5419 import (
     AmbienteLinha,
     BlindagemLinha,
@@ -82,17 +82,21 @@ st.sidebar.title("⚡ NBR 5419-2")
 st.sidebar.caption("Análise de Risco SPDA")
 st.sidebar.markdown("---")
 
+opcoes_menu = [
+    "1. Localização e NG",
+    "2. Estrutura",
+    "3. Zonas de estudo",
+    "4. Linhas conectadas",
+    "5. Medidas de proteção",
+    "6. Resultados",
+    "📚 Glossário",
+]
+if is_admin():
+    opcoes_menu.append("🛡️ Painel Admin")
+
 etapa = st.sidebar.radio(
     "Etapas",
-    [
-        "1. Localização e NG",
-        "2. Estrutura",
-        "3. Zonas de estudo",
-        "4. Linhas conectadas",
-        "5. Medidas de proteção",
-        "6. Resultados",
-        "📚 Glossário",
-    ],
+    opcoes_menu,
     label_visibility="collapsed",
 )
 
@@ -1055,6 +1059,183 @@ A análise F deve ser feita para todos os estudos com perdas D3 (falhas em siste
 
 
 # =============================================================================
+# Painel Admin
+# =============================================================================
+def etapa_admin():
+    """Painel restrito a administradores."""
+    if not is_admin():
+        st.error("Acesso restrito a administradores.")
+        return
+
+    st.header("🛡️ Painel do Administrador")
+    st.caption(
+        "Gerar credenciais de novos usuários, listar usuários ativos, "
+        "e preparar bloco TOML para sincronizar com Streamlit Cloud."
+    )
+
+    tab1, tab2, tab3 = st.tabs([
+        "👥 Usuários ativos",
+        "➕ Cadastrar novo usuário",
+        "📋 Bloco TOML para Streamlit Cloud",
+    ])
+
+    # ---- Tab 1: Listar usuários ----
+    with tab1:
+        from datetime import date as _date
+        st.subheader("Usuários cadastrados em produção")
+        st.caption(
+            "ℹ️ Lista lida de `st.secrets` (Streamlit Cloud). "
+            "Para alterar, use a aba **Cadastrar** ou o CLI "
+            "`python scripts/gerenciar_acessos.py`, e sincronize via aba 3."
+        )
+
+        try:
+            hashes = dict(st.secrets.get("auth_hashes", {}))
+            expiras = dict(st.secrets.get("auth_expira", {}))
+            roles = dict(st.secrets.get("auth_roles", {}))
+        except Exception:
+            hashes, expiras, roles = {}, {}, {}
+
+        if not hashes:
+            st.warning("Nenhum usuário encontrado em st.secrets.")
+        else:
+            linhas = []
+            hoje = _date.today()
+            for email in sorted(hashes.keys()):
+                exp_str = str(expiras.get(email, "2099-12-31"))
+                try:
+                    exp = _date.fromisoformat(exp_str)
+                except ValueError:
+                    exp = _date(2099, 12, 31)
+
+                role = (roles.get(email, "user") or "user").lower()
+                if exp < hoje:
+                    status = "🔴 Expirado"
+                elif exp == _date(2099, 12, 31):
+                    status = "🟢 Ativo (indeterminado)"
+                else:
+                    dias = (exp - hoje).days
+                    status = f"🟡 Expira em {dias}d" if dias <= 30 else f"🟢 Até {exp_str}"
+
+                linhas.append({
+                    "E-mail": email,
+                    "Role": "🛡️ admin" if role == "admin" else "👤 user",
+                    "Expira em": exp_str,
+                    "Status": status,
+                })
+
+            st.dataframe(
+                pd.DataFrame(linhas),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.caption(
+                f"Total: **{len(linhas)}** usuários "
+                f"({sum(1 for l in linhas if 'admin' in l['Role'])} admins, "
+                f"{sum(1 for l in linhas if 'user' in l['Role'])} users)"
+            )
+
+    # ---- Tab 2: Cadastrar novo usuário ----
+    with tab2:
+        st.subheader("Gerar credenciais para novo usuário")
+        st.caption(
+            "Esta tela **gera o hash localmente** e mostra o bloco TOML pronto "
+            "para colar no Streamlit Cloud Secrets. **Não salva nada automaticamente** — "
+            "você deve aplicar manualmente para ativar o acesso."
+        )
+
+        with st.form("cadastrar_usuario"):
+            col1, col2 = st.columns(2)
+            with col1:
+                novo_email = st.text_input(
+                    "E-mail do novo usuário",
+                    placeholder="usuario@empresa.com",
+                )
+                novo_role = st.selectbox(
+                    "Role",
+                    ["user", "admin"],
+                    help="user = projetista comum. admin = pode gerenciar usuários.",
+                )
+            with col2:
+                novo_senha = st.text_input(
+                    "Senha (provisória — usuário deve trocar)",
+                    type="password",
+                )
+                novo_expira = st.date_input(
+                    "Expira em",
+                    value=__import__("datetime").date(2099, 12, 31),
+                    help="Para acesso 'indeterminado' deixe 2099-12-31.",
+                )
+            gerar = st.form_submit_button("🔐 Gerar credenciais", type="primary")
+
+        if gerar:
+            if not novo_email or "@" not in novo_email:
+                st.error("E-mail inválido.")
+            elif len(novo_senha) < 6:
+                st.error("Senha muito curta (mínimo 6 caracteres).")
+            else:
+                novo_email_norm = novo_email.strip().lower()
+                novo_hash = hash_senha(novo_email_norm, novo_senha)
+                bloco = (
+                    f'\n[auth_hashes]\n'
+                    f'"{novo_email_norm}" = "{novo_hash}"\n\n'
+                    f'[auth_expira]\n'
+                    f'"{novo_email_norm}" = "{novo_expira.isoformat()}"\n\n'
+                    f'[auth_roles]\n'
+                    f'"{novo_email_norm}" = "{novo_role}"\n'
+                )
+                st.success("✅ Credencial gerada. Siga os 3 passos abaixo.")
+                st.markdown(
+                    f"**1. Bloco TOML para mesclar no Streamlit Cloud Secrets:**"
+                )
+                st.code(bloco, language="toml")
+                st.markdown(
+                    f"**2. Comunique a senha** para `{novo_email_norm}` por canal seguro "
+                    "(Teams DM, e-mail criptografado), **separadamente do login**:"
+                )
+                st.code(novo_senha, language="text")
+                st.warning(
+                    "⚠️ **Esta senha aparece somente nesta tela** e não fica salva. "
+                    "Anote agora se precisar consultar depois."
+                )
+                st.markdown(
+                    "**3. Aplique no Streamlit Cloud:** "
+                    "https://share.streamlit.io → seu app → **⋮ → Settings → Secrets** → "
+                    "**adicione** as 3 linhas (uma em cada seção existente) → **Save**."
+                )
+
+    # ---- Tab 3: Bloco TOML completo ----
+    with tab3:
+        st.subheader("Bloco TOML completo dos usuários atuais")
+        st.caption(
+            "Útil para refazer todos os Secrets do zero (ex.: migração entre Streamlit "
+            "Cloud apps)."
+        )
+        try:
+            hashes = dict(st.secrets.get("auth_hashes", {}))
+            expiras = dict(st.secrets.get("auth_expira", {}))
+            roles = dict(st.secrets.get("auth_roles", {}))
+        except Exception:
+            hashes, expiras, roles = {}, {}, {}
+
+        if hashes:
+            linhas_h = ["[auth_hashes]"] + [
+                f'"{e}" = "{hashes[e]}"' for e in sorted(hashes.keys())
+            ]
+            linhas_e = ["[auth_expira]"] + [
+                f'"{e}" = "{expiras.get(e, "2099-12-31")}"'
+                for e in sorted(hashes.keys())
+            ]
+            linhas_r = ["[auth_roles]"] + [
+                f'"{e}" = "{roles.get(e, "user")}"' for e in sorted(hashes.keys())
+            ]
+            bloco = "\n".join(linhas_h + [""] + linhas_e + [""] + linhas_r)
+            st.code(bloco, language="toml")
+        else:
+            st.info("Sem usuários cadastrados ainda.")
+
+
+# =============================================================================
 # Roteamento
 # =============================================================================
 ROTAS = {
@@ -1065,6 +1246,7 @@ ROTAS = {
     "5. Medidas de proteção": etapa_medidas,
     "6. Resultados": etapa_resultados,
     "📚 Glossário": etapa_glossario,
+    "🛡️ Painel Admin": etapa_admin,
 }
 
 ROTAS[etapa]()
