@@ -9,6 +9,7 @@ Uso:
 from __future__ import annotations
 
 import os
+from email import policy
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -145,12 +146,15 @@ def main() -> None:
             remetente_cargo=remetente_cargo,
         )
 
-        msg = EmailMessage()
+        # policy=SMTP garante CRLF e RFC 5322 corretos
+        # cte="base64" evita quebra de linha "= softbreak" do quoted-printable,
+        # que renderiza incorretamente em alguns clientes Outlook
+        msg = EmailMessage(policy=policy.SMTP)
         msg["Subject"] = ASSUNTO
         msg["To"] = proj["email"]
         if remetente_email:
             msg["From"] = remetente_email
-        msg.set_content(corpo, subtype="plain", charset="utf-8")
+        msg.set_content(corpo, subtype="plain", charset="utf-8", cte="base64")
 
         arquivo = pasta_saida / f"{proj['nome']}.eml"
         arquivo.write_bytes(bytes(msg))
