@@ -1,9 +1,13 @@
-# Análise de Risco SPDA — ABNT NBR 5419-2:2026
+# Calculadora PDA — Análise de Risco SPDA (ABNT NBR 5419-2:2026)
 
-Protótipo de aplicativo web para análise de risco de Sistema de Proteção contra
+Aplicativo web para análise de risco de Sistema de Proteção contra
 Descargas Atmosféricas (SPDA) conforme **ABNT NBR 5419-2:2026**.
 
-## ✨ O que está implementado (V1)
+> 📚 **Documentação completa:** veja [MANUAL_DESENVOLVEDOR.md](MANUAL_DESENVOLVEDOR.md)
+> (replicação, arquitetura, lições aprendidas) e [MANUAL_USUARIO.md](MANUAL_USUARIO.md)
+> (uso por engenheiros/técnicos).
+
+## ✨ O que está implementado
 
 - ✅ Cobertura completa da Parte 2 da norma
 - ✅ Cálculo de R1 (vida humana), R3 (patrimônio cultural) e R4 (econômico — Anexo D)
@@ -11,11 +15,12 @@ Descargas Atmosféricas (SPDA) conforme **ABNT NBR 5419-2:2026**.
 - ✅ Anexo A — áreas equivalentes AD, AM, AL, AI e fatores CD, CI, CT, CE
 - ✅ Anexo B — todas as 9 tabelas de probabilidade (PTA, PB, PSPD, CLD/CLI, KS3, PTU, PEB, PLD, PLI)
 - ✅ Anexo C — perdas L1 com fatores rt, rp, rf, hz, rs e razão nz/nt × tz/8760
-- ✅ Anexo F — base de NG por município (5404 municípios extraídos da Tabela F.1)
-- ✅ Múltiplas zonas de estudo
-- ✅ Múltiplas linhas conectadas (energia + sinal)
+- ✅ Anexo F — base de NG por município (5.571 municípios, planilha oficial ABNT)
+- ✅ Múltiplas zonas de estudo e múltiplas linhas conectadas (energia + sinal)
 - ✅ Dashboard com decomposição por componente, gráficos e diagnóstico
-- ✅ Memorial de cálculo exportável em Markdown
+- ✅ Memorial de cálculo exportável em **PDF, Word e Markdown**
+- ✅ Autenticação com login/senha, papéis (admin/user) e expiração de acesso
+- ✅ Painel administrativo para gestão de usuários
 
 ## 🚀 Como executar
 

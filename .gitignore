@@ -21,3 +21,8 @@ passwords.txt
 
 # E-mails gerados (podem conter dados pessoais)
 emails/
+
+# Memoriais/projetos gerados localmente (dados de clientes) — NUNCA commitar
+Projetos/
+*.pdf
+!assets/*.pdf
