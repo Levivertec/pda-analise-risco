@@ -1,0 +1,10 @@
+# Força LF (quebra de linha Unix) em scripts shell — evita erro "bash\r" no Railway/Linux
+*.sh text eol=lf
+start.sh text eol=lf
+
+# Normaliza texto
+*.py text
+*.toml text
+*.md text
+*.json text
+*.csv text
