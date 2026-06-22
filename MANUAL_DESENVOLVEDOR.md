@@ -492,6 +492,39 @@ CREATE TABLE audit_log (
 
 ## 14. Metodologia de sprints
 
+### 14.0 Premissas de governança (REGRA DE OURO)
+
+> Estas premissas valem para **toda** a vida do projeto e têm precedência sobre
+> conveniência ou velocidade de entrega.
+
+1. **Toda mudança nasce no ambiente de TESTE**, nunca direto em produção. Produção
+   só recebe o que já foi validado em teste. Objetivo: o software **nunca** fica
+   indisponível para os usuários por causa de uma melhoria.
+
+2. **Gatilhos de parada obrigatória** — se durante qualquer trabalho for detectada a
+   necessidade de mudar uma ferramenta/abordagem por um destes motivos:
+   - melhorar a **segurança operacional**;
+   - melhorar a **blindagem contra invasão (hackers)**;
+   - melhorar a **velocidade de interação** com o usuário;
+   - melhorar o **layout/UX**;
+   - **qualquer outra melhoria** relevante detectada;
+   → **NÃO seguir adiante por conta própria.** Parar, e levar a questão para
+   **decisão conjunta** com o responsável (Levi).
+
+3. **Decisão sempre conjunta.** O desenvolvedor (ou IA) **não adota inferências** nem
+   decide sozinho mudanças estruturais. Deve **trazer vantagens e desvantagens** de
+   cada opção e deixar a decisão com o responsável.
+
+4. **Certeza de segurança.** Nenhuma solução é adotada sem certeza da sua segurança.
+   Na dúvida, **testar primeiro** no ambiente de teste — mas a decisão final é sempre
+   do responsável.
+
+5. **Pós-decisão.** Somente **após a decisão conjunta**: atualizar TODA a documentação
+   (este manual + manual do usuário), definir **sprints**, **planejamento de execução**
+   e registrar **lições aprendidas**.
+
+### 14.1 Fluxo de sprints
+
 - Toda evolução é planejada em **sprints** com escopo fechado.
 - Cada sprint segue: **planejar → implementar em `develop` → testar em TESTE →
   promover para `main` (PROD) → revisar este manual + o Manual do Usuário.**
