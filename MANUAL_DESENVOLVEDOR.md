@@ -103,25 +103,36 @@ data/ng_municipios.csv  (base NG, 5.571 municípios)
 nenhuma dependência do Streamlit. A UI (`app.py`) apenas consome o motor. Isso permite
 reaproveitar o motor em outras interfaces (CLI, API REST, desktop) no futuro.
 
-### 3.2 Arquitetura ALVO (em implantação — ver Sprint 1+)
+### 3.2 Arquitetura ALVO (em implantação — Sprint 0+)
+
+**Decisão (Sprint 0):** hospedagem migra do Streamlit Community Cloud para o **Railway**
+(conta paga do usuário), em um **projeto isolado** (`calculadora-pda`) com **dois
+ambientes** (production e test). Motivos: sem cold start, app + banco no mesmo lugar,
+domínio próprio, privado e robusto para a fase comercial.
 
 ```
-            ┌─────────────────────────────────────┐
-            │  GitHub: Levivertec/pda-analise-risco │
-            │   branch main ───► PRODUÇÃO           │
-            │   branch develop ─► TESTE             │
-            └─────────────────────────────────────┘
-                    │                  │
-                    ▼                  ▼
-        Streamlit Cloud PROD    Streamlit Cloud TESTE
-        calculadora-pda         pda-nbr5419-ar
-                    │                  │
-                    ▼                  ▼
-        Railway: pda-prod-db    Railway: pda-test-db
-        (PostgreSQL)            (PostgreSQL)
+            ┌──────────────────────────────────────┐
+            │ GitHub: Levivertec/pda-analise-risco  │
+            │   branch main    ───► PRODUÇÃO         │
+            │   branch develop ───► TESTE            │
+            └──────────────────────────────────────┘
+                     │                    │
+                     ▼                    ▼
+        ┌─ Railway projeto: calculadora-pda ──────────────┐
+        │  Environment "production"   Environment "test"   │
+        │   ├── app (Streamlit)        ├── app (Streamlit) │
+        │   └── PostgreSQL             └── PostgreSQL       │
+        └─────────────────────────────────────────────────┘
+                     │
+                     ▼
+        Domínio: pda.tesconsult.com.br (produção)
 ```
 
-Ver detalhes em [Seção 10](#10-ambientes-teste-e-produção) e [Seção 12](#12-banco-de-dados-railway--arquitetura-alvo).
+> O Streamlit Community Cloud (`pda-nbr5419-ar.streamlit.app`) fica como **fallback
+> histórico** até a migração ser validada; depois pode ser desativado.
+
+Ver detalhes em [Seção 10](#10-ambientes-teste-e-produção), [Seção 11](#11-deploy-streamlit-cloud)
+e [Seção 12](#12-banco-de-dados-railway--arquitetura-alvo).
 
 ---
 
@@ -354,12 +365,24 @@ python scripts/gerenciar_acessos.py
 > **Princípio:** nenhuma alteração vai direto para os usuários. Tudo é validado em
 > TESTE antes de promover para PRODUÇÃO.
 
-### 10.1 Mapeamento
+### 10.1 Mapeamento (Railway)
 
-| Ambiente | App Streamlit | Branch Git | Banco Railway | Público |
-|---|---|---|---|---|
-| **TESTE** | `pda-nbr5419-ar` | `develop` | `pda-test-db` | Projetistas (validação) / devs |
-| **PRODUÇÃO** | `calculadora-pda` | `main` | `pda-prod-db` | Clientes / uso estável |
+| Ambiente | Railway Environment | Branch Git | Banco | Domínio | Público |
+|---|---|---|---|---|---|
+| **TESTE** | `test` | `develop` | PostgreSQL (env test) | `*.up.railway.app` | Projetistas/devs |
+| **PRODUÇÃO** | `production` | `main` | PostgreSQL (env production) | `pda.tesconsult.com.br` | Clientes / uso estável |
+
+Ambos no projeto Railway `calculadora-pda`. Cada Railway Environment é uma cópia
+completa dos serviços (app + banco) com suas próprias variáveis de ambiente.
+
+**Arquivos de configuração do Railway (no repositório):**
+- `railway.json` — builder NIXPACKS + start command (`bash start.sh`)
+- `start.sh` — gera `secrets.toml` a partir da env var `STREAMLIT_SECRETS_TOML` e sobe o Streamlit na `$PORT`
+- `.python-version` — fixa Python 3.11
+
+**Variáveis de ambiente por Railway Environment:**
+- `STREAMLIT_SECRETS_TOML` — conteúdo TOML dos usuários (`[auth_hashes]`, `[auth_expira]`, `[auth_roles]`)
+- `DATABASE_URL` — injetada automaticamente ao referenciar o serviço PostgreSQL (usada a partir do Sprint 1)
 
 ### 10.2 Fluxo de promoção (GitFlow simplificado)
 
@@ -493,6 +516,10 @@ CREATE TABLE audit_log (
 | 2026 | E-mails `.eml` em base64 | ✅ Em operação |
 | 2026 | Ícone de raio (PNG/ICO) | ✅ Em operação |
 | 2026 | Manifest PWA customizado (injeção via JS) | ⚠️ Não confirmado (ver Lições) |
+| 01/05/2026 | **Decisão:** migrar hospedagem Streamlit Cloud → Railway (2 ambientes) | 🟡 Em implantação (Sprint 0) |
+| 01/05/2026 | Config Railway: `railway.json`, `start.sh`, `.python-version` | 🟡 Em implantação |
+| 01/05/2026 | **Decisão:** domínio de produção `pda.tesconsult.com.br` | 🟡 Em implantação |
+| 01/05/2026 | Branch `develop` criada para o ambiente de teste | 🟡 Em implantação |
 
 ---
 
