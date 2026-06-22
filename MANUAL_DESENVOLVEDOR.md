@@ -605,22 +605,31 @@ CREATE TABLE audit_log (
 - **Sintoma:** `UnicodeEncodeError` ao rodar scripts com emojis/acentos.
 - **Solução:** sempre `set PYTHONUTF8=1` (CMD) ou `$env:PYTHONUTF8="1"` (PowerShell).
 
+### L9 — Tornar repo privado pode derrubar app já publicado no Streamlit Cloud
+- **Risco detectado (governança, antes de executar):** mudar o repositório de público
+  para privado pode fazer o app já publicado no **Streamlit Community Cloud** (free)
+  perder acesso ao código e parar de funcionar, **interrompendo usuários**.
+- **Solução:** só tornar o repo privado **após** migrar os usuários para o Railway e
+  aposentar o app do Streamlit Cloud. Ordem registrada no PLANEJAMENTO_SPRINTS.md (Sprint 0).
+- **Lição:** o gatilho de "parar e decidir em conjunto" da Regra de Ouro evitou uma
+  interrupção de serviço — confirmar **ordem de execução**, não só o "o quê".
+
 ---
 
 ## 17. Roadmap
 
-| Prioridade | Item | Sprint |
-|---|---|---|
-| Alta | Separação Teste/Produção + branches | Sprint 0 |
-| Alta | Banco PostgreSQL (Railway) p/ usuários | Sprint 1 |
-| Alta | Self-service de troca de senha + "Minha conta" | Sprint 2 |
-| Média | Log de auditoria (quem fez o quê) | Sprint 3 |
-| Média | Salvar/carregar projetos do usuário | Sprint 4 |
-| Média | Frequência de danos F (Seção 7) na UI | A definir |
-| Média | Anexo D (R4) completo com ca/cb/cc/cs | A definir |
-| Baixa | Tornar repositório privado (fase comercial) | A definir |
-| Baixa | Testes automatizados vs. exemplos da norma | A definir |
-| Baixa | Cobrança (Stripe/Asaas) + expiração automática | Fase comercial |
+> O plano detalhado de sprints (escopo fechado, critérios de saída, fluxo de execução)
+> está em **[PLANEJAMENTO_SPRINTS.md](PLANEJAMENTO_SPRINTS.md)**. Resumo:
+
+| Sprint | Foco |
+|---|---|
+| **0** | Fundação de ambientes (Railway teste+prod, domínio, travar versões, repo privado) |
+| **1** | Segurança de autenticação (auth no banco, hash seguro, rotação de senhas) |
+| **2** | Self-service de senha + blindagem (anti-brute-force, salt por usuário) |
+| **3** | Auditoria + qualidade (log, testes automatizados, CI) |
+| **4** | Performance e UX (cache, ícone, PWA) |
+| **5** | Manutenibilidade (refatorar `app.py`) |
+| Futuro | 2FA, cobrança, salvar projetos, Frequência F, R4 completo |
 
 ---
 
